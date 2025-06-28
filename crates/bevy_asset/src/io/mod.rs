@@ -31,8 +31,11 @@ use core::{
 };
 use futures_io::{AsyncRead, AsyncWrite};
 use futures_lite::{ready, Stream};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+
+use crate::meta::Settings;
 
 /// Errors that occur while loading assets.
 #[derive(Error, Debug, Clone)]
@@ -207,6 +210,8 @@ where
 ///
 /// For a complementary version of this trait that can write assets to storage, see [`AssetWriter`].
 pub trait AssetReader: Send + Sync + 'static {
+    /// The settings type used by this [`AssetReader`].
+    type Settings: Settings + Default + Serialize + for<'a> Deserialize<'a>;
     /// Returns a future to load the full file data at the provided path.
     ///
     /// # Note for implementors
@@ -228,27 +233,30 @@ pub trait AssetReader: Send + Sync + 'static {
     ///     # async fn read_meta_bytes<'a>(&'a self, path: &'a Path) -> Result<Vec<u8>, AssetReaderError> { unimplemented!() }
     /// }
     /// ```
-    fn read<'a>(&'a self, path: &'a Path) -> impl AssetReaderFuture<Value: Reader + 'a>;
+    fn read<'a>(&'a self, path: &'a Path, settings: &'a Self::Settings,) -> impl AssetReaderFuture<Value: Reader + 'a>;
     /// Returns a future to load the full file data at the provided path.
-    fn read_meta<'a>(&'a self, path: &'a Path) -> impl AssetReaderFuture<Value: Reader + 'a>;
+    fn read_meta<'a>(&'a self, path: &'a Path, settings: &'a Self::Settings,) -> impl AssetReaderFuture<Value: Reader + 'a>;
     /// Returns an iterator of directory entry names at the provided path.
     fn read_directory<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a Self::Settings,
     ) -> impl ConditionalSendFuture<Output = Result<Box<PathStream>, AssetReaderError>>;
     /// Returns true if the provided path points to a directory.
     fn is_directory<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a Self::Settings,
     ) -> impl ConditionalSendFuture<Output = Result<bool, AssetReaderError>>;
     /// Reads asset metadata bytes at the given `path` into a [`Vec<u8>`]. This is a convenience
     /// function that wraps [`AssetReader::read_meta`] by default.
     fn read_meta_bytes<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a Self::Settings,
     ) -> impl ConditionalSendFuture<Output = Result<Vec<u8>, AssetReaderError>> {
         async {
-            let mut meta_reader = self.read_meta(path).await?;
+            let mut meta_reader = self.read_meta(path, settings).await?;
             let mut meta_bytes = Vec::new();
             meta_reader.read_to_end(&mut meta_bytes).await?;
             Ok(meta_bytes)
@@ -263,27 +271,32 @@ pub trait ErasedAssetReader: Send + Sync + 'static {
     fn read<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a dyn Settings,
     ) -> BoxedFuture<'a, Result<Box<dyn Reader + 'a>, AssetReaderError>>;
     /// Returns a future to load the full file data at the provided path.
     fn read_meta<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a dyn Settings,
     ) -> BoxedFuture<'a, Result<Box<dyn Reader + 'a>, AssetReaderError>>;
     /// Returns an iterator of directory entry names at the provided path.
     fn read_directory<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a dyn Settings,
     ) -> BoxedFuture<'a, Result<Box<PathStream>, AssetReaderError>>;
     /// Returns true if the provided path points to a directory.
     fn is_directory<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a dyn Settings,
     ) -> BoxedFuture<'a, Result<bool, AssetReaderError>>;
     /// Reads asset metadata bytes at the given `path` into a [`Vec<u8>`]. This is a convenience
     /// function that wraps [`ErasedAssetReader::read_meta`] by default.
     fn read_meta_bytes<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a dyn Settings,
     ) -> BoxedFuture<'a, Result<Vec<u8>, AssetReaderError>>;
 }
 
@@ -291,38 +304,58 @@ impl<T: AssetReader> ErasedAssetReader for T {
     fn read<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a dyn Settings,
     ) -> BoxedFuture<'a, Result<Box<dyn Reader + 'a>, AssetReaderError>> {
         Box::pin(async {
-            let reader = Self::read(self, path).await?;
+            let settings = settings
+                .downcast_ref::<T::Settings>()
+                .expect("AssetReader settings should match the loader type");
+            let reader = Self::read(self, path, settings).await?;
             Ok(Box::new(reader) as Box<dyn Reader>)
         })
     }
     fn read_meta<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a dyn Settings,
     ) -> BoxedFuture<'a, Result<Box<dyn Reader + 'a>, AssetReaderError>> {
         Box::pin(async {
-            let reader = Self::read_meta(self, path).await?;
+            let settings = settings
+                .downcast_ref::<T::Settings>()
+                .expect("AssetReader settings should match the loader type");
+            let reader = Self::read_meta(self, path, settings).await?;
             Ok(Box::new(reader) as Box<dyn Reader>)
         })
     }
     fn read_directory<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a dyn Settings,
     ) -> BoxedFuture<'a, Result<Box<PathStream>, AssetReaderError>> {
-        Box::pin(Self::read_directory(self, path))
+        let settings = settings
+            .downcast_ref::<T::Settings>()
+            .expect("AssetReader settings should match the loader type");
+        Box::pin(Self::read_directory(self, path, settings))
     }
     fn is_directory<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a dyn Settings,
     ) -> BoxedFuture<'a, Result<bool, AssetReaderError>> {
-        Box::pin(Self::is_directory(self, path))
+        let settings = settings
+            .downcast_ref::<T::Settings>()
+            .expect("AssetReader settings should match the loader type");
+        Box::pin(Self::is_directory(self, path, settings))
     }
     fn read_meta_bytes<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a dyn Settings,
     ) -> BoxedFuture<'a, Result<Vec<u8>, AssetReaderError>> {
-        Box::pin(Self::read_meta_bytes(self, path))
+        let settings = settings
+            .downcast_ref::<T::Settings>()
+            .expect("AssetReader settings should match the loader type");
+        Box::pin(Self::read_meta_bytes(self, path, settings))
     }
 }
 

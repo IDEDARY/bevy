@@ -287,7 +287,8 @@ impl Reader for DataReader {
 }
 
 impl AssetReader for MemoryAssetReader {
-    async fn read<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+    type Settings = ();
+    async fn read<'a>(&'a self, path: &'a Path, _settings: &()) -> Result<impl Reader + 'a, AssetReaderError> {
         self.root
             .get_asset(path)
             .map(|data| DataReader {
@@ -297,7 +298,7 @@ impl AssetReader for MemoryAssetReader {
             .ok_or_else(|| AssetReaderError::NotFound(path.to_path_buf()))
     }
 
-    async fn read_meta<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+    async fn read_meta<'a>(&'a self, path: &'a Path, _settings: &()) -> Result<impl Reader + 'a, AssetReaderError> {
         self.root
             .get_metadata(path)
             .map(|data| DataReader {
@@ -310,6 +311,7 @@ impl AssetReader for MemoryAssetReader {
     async fn read_directory<'a>(
         &'a self,
         path: &'a Path,
+        _settings: &(),
     ) -> Result<Box<PathStream>, AssetReaderError> {
         self.root
             .get_dir(path)
@@ -320,7 +322,7 @@ impl AssetReader for MemoryAssetReader {
             .ok_or_else(|| AssetReaderError::NotFound(path.to_path_buf()))
     }
 
-    async fn is_directory<'a>(&'a self, path: &'a Path) -> Result<bool, AssetReaderError> {
+    async fn is_directory<'a>(&'a self, path: &'a Path, _settings: &()) -> Result<bool, AssetReaderError> {
         Ok(self.root.get_dir(path).is_some())
     }
 }

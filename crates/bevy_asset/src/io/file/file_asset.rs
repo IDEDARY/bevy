@@ -34,7 +34,8 @@ impl AsyncSeekForward for File {
 impl Reader for File {}
 
 impl AssetReader for FileAssetReader {
-    async fn read<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+    type Settings = ();
+    async fn read<'a>(&'a self, path: &'a Path, _settings: &()) -> Result<impl Reader + 'a, AssetReaderError> {
         let full_path = self.root_path.join(path);
         File::open(&full_path).await.map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -45,7 +46,7 @@ impl AssetReader for FileAssetReader {
         })
     }
 
-    async fn read_meta<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+    async fn read_meta<'a>(&'a self, path: &'a Path, _settings: &()) -> Result<impl Reader + 'a, AssetReaderError> {
         let meta_path = get_meta_path(path);
         let full_path = self.root_path.join(meta_path);
         File::open(&full_path).await.map_err(|e| {
@@ -60,6 +61,7 @@ impl AssetReader for FileAssetReader {
     async fn read_directory<'a>(
         &'a self,
         path: &'a Path,
+        _settings: &(),
     ) -> Result<Box<PathStream>, AssetReaderError> {
         let full_path = self.root_path.join(path);
         match read_dir(&full_path).await {
@@ -100,7 +102,7 @@ impl AssetReader for FileAssetReader {
         }
     }
 
-    async fn is_directory<'a>(&'a self, path: &'a Path) -> Result<bool, AssetReaderError> {
+    async fn is_directory<'a>(&'a self, path: &'a Path, _settings: &()) -> Result<bool, AssetReaderError> {
         let full_path = self.root_path.join(path);
         let metadata = full_path
             .metadata()

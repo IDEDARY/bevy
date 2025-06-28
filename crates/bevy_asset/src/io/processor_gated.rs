@@ -51,7 +51,8 @@ impl ProcessorGatedReader {
 }
 
 impl AssetReader for ProcessorGatedReader {
-    async fn read<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+    type Settings = ();
+    async fn read<'a>(&'a self, path: &'a Path, settings: &'a ()) -> Result<impl Reader + 'a, AssetReaderError> {
         let asset_path = AssetPath::from(path.to_path_buf()).with_source(self.source.clone());
         trace!("Waiting for processing to finish before reading {asset_path}");
         let process_result = self
@@ -66,12 +67,12 @@ impl AssetReader for ProcessorGatedReader {
         }
         trace!("Processing finished with {asset_path}, reading {process_result:?}",);
         let lock = self.get_transaction_lock(&asset_path).await?;
-        let asset_reader = self.reader.read(path).await?;
+        let asset_reader = self.reader.read(path, settings).await?;
         let reader = TransactionLockedReader::new(asset_reader, lock);
         Ok(reader)
     }
 
-    async fn read_meta<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+    async fn read_meta<'a>(&'a self, path: &'a Path, settings: &'a ()) -> Result<impl Reader + 'a, AssetReaderError> {
         let asset_path = AssetPath::from(path.to_path_buf()).with_source(self.source.clone());
         trace!("Waiting for processing to finish before reading meta for {asset_path}",);
         let process_result = self
@@ -86,7 +87,7 @@ impl AssetReader for ProcessorGatedReader {
         }
         trace!("Processing finished with {process_result:?}, reading meta for {asset_path}",);
         let lock = self.get_transaction_lock(&asset_path).await?;
-        let meta_reader = self.reader.read_meta(path).await?;
+        let meta_reader = self.reader.read_meta(path, settings).await?;
         let reader = TransactionLockedReader::new(meta_reader, lock);
         Ok(reader)
     }
@@ -94,6 +95,7 @@ impl AssetReader for ProcessorGatedReader {
     async fn read_directory<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a (),
     ) -> Result<Box<PathStream>, AssetReaderError> {
         trace!(
             "Waiting for processing to finish before reading directory {:?}",
@@ -101,18 +103,18 @@ impl AssetReader for ProcessorGatedReader {
         );
         self.processor_data.wait_until_finished().await;
         trace!("Processing finished, reading directory {:?}", path);
-        let result = self.reader.read_directory(path).await?;
+        let result = self.reader.read_directory(path, settings).await?;
         Ok(result)
     }
 
-    async fn is_directory<'a>(&'a self, path: &'a Path) -> Result<bool, AssetReaderError> {
+    async fn is_directory<'a>(&'a self, path: &'a Path, settings: &'a ()) -> Result<bool, AssetReaderError> {
         trace!(
             "Waiting for processing to finish before reading directory {:?}",
             path
         );
         self.processor_data.wait_until_finished().await;
         trace!("Processing finished, getting directory status {:?}", path);
-        let result = self.reader.is_directory(path).await?;
+        let result = self.reader.is_directory(path, settings).await?;
         Ok(result)
     }
 }

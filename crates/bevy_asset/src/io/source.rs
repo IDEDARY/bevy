@@ -1,6 +1,5 @@
 use crate::{
-    io::{processor_gated::ProcessorGatedReader, AssetSourceEvent, AssetWatcher},
-    processor::AssetProcessorData,
+    io::{processor_gated::ProcessorGatedReader, AssetSourceEvent, AssetWatcher}, meta::Settings, processor::AssetProcessorData
 };
 use alloc::{
     boxed::Box,
@@ -161,6 +160,8 @@ pub struct AssetSourceBuilder {
     pub watch_warning: Option<&'static str>,
     /// The warning message to display when watching a processed asset fails.
     pub processed_watch_warning: Option<&'static str>,
+    /// The settings for the asset source
+    pub settings: Option<Box<dyn FnMut() -> Box<dyn Settings> + Send + Sync>>,
 }
 
 impl AssetSourceBuilder {
@@ -173,6 +174,11 @@ impl AssetSourceBuilder {
         watch_processed: bool,
     ) -> Option<AssetSource> {
         let reader = self.reader.as_mut()?();
+
+        let settings = if let Some(f) = self.settings.as_mut() { f() } else {
+            Box::new(())
+        };
+
         let writer = self.writer.as_mut().and_then(|w| w(false));
         let processed_writer = self.processed_writer.as_mut().and_then(|w| w(true));
         let mut source = AssetSource {
@@ -185,6 +191,7 @@ impl AssetSourceBuilder {
             watcher: None,
             processed_event_receiver: None,
             processed_watcher: None,
+            settings,
         };
 
         if watch {
@@ -291,6 +298,15 @@ impl AssetSourceBuilder {
         self
     }
 
+    /// Will use the given `settings` function to construct [`Settings`](crate::meta::Settings) instances.
+    pub fn with_settings(
+        mut self,
+        settings: impl FnMut() -> Box<dyn Settings> + Send + Sync + 'static,
+    ) -> Self {
+        self.settings = Some(Box::new(settings));
+        self
+    }
+
     /// Returns a builder containing the "platform default source" for the given `path` and `processed_path`.
     /// For most platforms, this will use [`FileAssetReader`](crate::io::file::FileAssetReader) / [`FileAssetWriter`](crate::io::file::FileAssetWriter),
     /// but some platforms (such as Android) have their own default readers / writers / watchers.
@@ -393,6 +409,7 @@ pub struct AssetSource {
     processed_watcher: Option<Box<dyn AssetWatcher>>,
     event_receiver: Option<crossbeam_channel::Receiver<AssetSourceEvent>>,
     processed_event_receiver: Option<crossbeam_channel::Receiver<AssetSourceEvent>>,
+    settings: Box<dyn Settings>
 }
 
 impl AssetSource {
@@ -411,6 +428,12 @@ impl AssetSource {
     #[inline]
     pub fn reader(&self) -> &dyn ErasedAssetReader {
         &*self.reader
+    }
+
+    /// Return's this source's [`Settings`](crate::meta::Settings).
+    #[inline]
+    pub fn settings(&self) -> &dyn Settings {
+        &*self.settings
     }
 
     /// Return's this source's unprocessed [`AssetWriter`](crate::io::AssetWriter), if it exists.

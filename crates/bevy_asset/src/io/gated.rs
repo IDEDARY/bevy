@@ -56,7 +56,8 @@ impl<R: AssetReader> GatedReader<R> {
 }
 
 impl<R: AssetReader> AssetReader for GatedReader<R> {
-    async fn read<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+    type Settings = R::Settings;
+    async fn read<'a>(&'a self, path: &'a Path, settings: &'a Self::Settings) -> Result<impl Reader + 'a, AssetReaderError> {
         let receiver = {
             let mut gates = self.gates.write();
             let gates = gates
@@ -65,22 +66,23 @@ impl<R: AssetReader> AssetReader for GatedReader<R> {
             gates.1.clone()
         };
         receiver.recv().unwrap();
-        let result = self.reader.read(path).await?;
+        let result = self.reader.read(path, settings).await?;
         Ok(result)
     }
 
-    async fn read_meta<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
-        self.reader.read_meta(path).await
+    async fn read_meta<'a>(&'a self, path: &'a Path, settings: &'a Self::Settings) -> Result<impl Reader + 'a, AssetReaderError> {
+        self.reader.read_meta(path, settings).await
     }
 
     async fn read_directory<'a>(
         &'a self,
         path: &'a Path,
+        settings: &'a Self::Settings,
     ) -> Result<Box<PathStream>, AssetReaderError> {
-        self.reader.read_directory(path).await
+        self.reader.read_directory(path, settings).await
     }
 
-    async fn is_directory<'a>(&'a self, path: &'a Path) -> Result<bool, AssetReaderError> {
-        self.reader.is_directory(path).await
+    async fn is_directory<'a>(&'a self, path: &'a Path, settings: &'a Self::Settings) -> Result<bool, AssetReaderError> {
+        self.reader.is_directory(path, settings).await
     }
 }

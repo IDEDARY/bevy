@@ -807,22 +807,25 @@ mod tests {
     }
 
     impl AssetReader for UnstableMemoryAssetReader {
-        async fn is_directory<'a>(&'a self, path: &'a Path) -> Result<bool, AssetReaderError> {
-            self.memory_reader.is_directory(path).await
+        type Settings = ();
+        async fn is_directory<'a>(&'a self, path: &'a Path, settings: &'a ()) -> Result<bool, AssetReaderError> {
+            self.memory_reader.is_directory(path, settings).await
         }
         async fn read_directory<'a>(
             &'a self,
             path: &'a Path,
+            settings: &'a (),
         ) -> Result<Box<bevy_asset::io::PathStream>, AssetReaderError> {
-            self.memory_reader.read_directory(path).await
+            self.memory_reader.read_directory(path, settings).await
         }
         async fn read_meta<'a>(
             &'a self,
             path: &'a Path,
+            settings: &'a (),
         ) -> Result<impl Reader + 'a, AssetReaderError> {
-            self.memory_reader.read_meta(path).await
+            self.memory_reader.read_meta(path, settings).await
         }
-        async fn read<'a>(&'a self, path: &'a Path) -> Result<impl Reader + 'a, AssetReaderError> {
+        async fn read<'a>(&'a self, path: &'a Path, settings: &'a ()) -> Result<impl Reader + 'a, AssetReaderError> {
             let attempt_number = {
                 let mut attempt_counters = self.attempt_counters.lock().unwrap();
                 if let Some(existing) = attempt_counters.get_mut(path) {
@@ -850,7 +853,7 @@ mod tests {
                 .await;
             }
 
-            self.memory_reader.read(path).await
+            self.memory_reader.read(path, settings).await
         }
     }
 
